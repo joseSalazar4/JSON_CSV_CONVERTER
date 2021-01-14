@@ -25,7 +25,69 @@ feature {NONE} -- Initialization
 			main_option_menu
 		end
 
-		-- Methods
+	-- METHODS
+	JSONToCSV(JSONArrayAux: JSON_ARRAY): STRING
+
+	local
+		line:STRING
+		tipos:BOOLEAN
+		lineAux2:STRING
+		lineTipos:STRING
+		lineResult:STRING
+		lineNombres:STRING
+		listaAux:LINKED_LIST[STRING]
+	do
+		tipos:= TRUE
+		create listaAux.make
+		create line.make_empty
+		create lineTipos.make_empty
+		create lineResult.make_empty
+		create lineNombres.make_empty
+
+		across JSONArrayAux as tira
+		loop
+			line:=tira.item.representation
+			line.remove_head (1)
+			if line.tail (1).is_equal (",") then
+				line.remove_tail (2)
+			else
+				line.remove_tail (1)
+			end
+			listaAux.append (line.split (','))
+			line.wipe_out
+			across listaAux as column
+			loop
+				if tipos then
+					lineAux2:=column.item.split (':').at(1)
+					lineAux2.replace_substring_all ("%"","")
+					lineResult.append (lineAux2+";")
+					lineAux2.wipe_out
+				end
+				lineAux2:= column.item.split (':').at (2)
+				if lineAux2.is_equal ("true") then
+					line.append ("S"+";")
+				elseif  lineAux2.is_equal("false") then
+					line.append ("N"+";")
+				else
+					line.append (lineAux2+";")
+				end
+			end
+			listaAux.wipe_out
+			if tipos then
+				lineResult.remove_tail (1)
+				lineResult.append ("%N")
+				tipos:=FALSE
+			end
+			line.remove_tail (1)
+			lineResult.append (line)
+			lineResult.append ("%N")
+			line.wipe_out
+		end
+		Result:=lineResult
+		Result.replace_substring_all ("%"","")
+	end
+
+
 	main_option_menu
 
 		local
@@ -33,8 +95,9 @@ feature {NONE} -- Initialization
 			line: STRING
 			lineAux: STRING
 			loadedFileName: STRING
+			JSONArrayAux : JSON_ARRAY
     		output_file: PLAIN_TEXT_FILE
-    		j : JSON_ARRAY
+
 		do
 
 			from
@@ -59,13 +122,15 @@ feature {NONE} -- Initialization
 				elseif  lineAux.is_equal ("save") then
 
 					if objetosJSON.has_key (line.split (' ').at (2)) then
-						create j.make_empty
+						create JSONArrayAux.make_empty
 						create output_file.make_open_write (line.split (' ').at (3))
-						j:=objetosJSON.at (line.split (' ').at (2))
-						if j/= void then
-							line := j.representation
+						JSONArrayAux:=objetosJSON.at (line.split (' ').at (2))
+						if JSONArrayAux/= void then
+							line := JSONArrayAux.representation
 						end
 						line.to_string_8.replace_substring_all (",{", ","+"%N"+"{")
+						line.replace_substring_all ("[", "["+"%N")
+						line.replace_substring_all ("]", "%N"+"]")
 						output_file.put_string(line)
 						output_file.close
 					else
@@ -73,7 +138,19 @@ feature {NONE} -- Initialization
 					end
 
 				elseif lineAux.is_equal ("savecsv") then
+					if objetosJSON.has_key (line.split (' ').at (2)) then
+						create JSONArrayAux.make (4)
+						create output_file.make_open_write (line.split (' ').at (3))
+						JSONArrayAux:=objetosJSON.at (line.split (' ').at (2))
 
+						if JSONArrayAux/= void then
+							line:=JSONToCSV(JSONArrayAux)
+						end
+						output_file.put_string(line)
+						output_file.close
+					else
+						print("No existe el archivo especificado"+"%N")
+					end
 				elseif lineAux.is_equal ("select") then
 
 				elseif lineAux.is_equal ("project") then
@@ -90,15 +167,12 @@ feature {NONE} -- Initialization
 	csv_to_json (csvActual: CSV_REP): JSON_ARRAY
 
 		local
+			tipo: STRING
+			index: INTEGER
+			llave: JSON_STRING
+			jsonNull: JSON_NULL
 			jsonArray: JSON_ARRAY
 			objetoActual: JSON_OBJECT
-			index: INTEGER
-
-			tipo: STRING
-			llave: JSON_STRING
-			realNum: REAL
-			jsonNull:JSON_NULL
-
 		do
 
 			index := 0
@@ -112,19 +186,16 @@ feature {NONE} -- Initialization
 				across fila.item
  					as column
 				loop
-
-
 					index := column.cursor_index
 					create llave.make_from_string(csvActual.nombrescolumnas.at (index))
 					tipo := csvActual.tiposcolumnas.at (index)
 					if tipo.is_equal ("X") then
-						if column.item.out.is_equal ("") then
-								objetoActual.put (jsonNull, llave)
+						if  column.item.out.is_equal ("") then
+							objetoActual.put (jsonNull, llave)
 						end
 						objetoActual.put_string(column.item.out, llave)
 					elseif tipo.is_equal ("N") or tipo.is_equal ("9") then
-						create realNum.make_from_reference (column.item.out.to_real)
-						objetoActual.put_real (realNum, llave)
+						objetoActual.put_real (column.item.out.to_real, llave)
 					elseif tipo.is_equal ("B") then
 						if column.item.out.is_equal ("T") or column.item.out.is_equal ("S") then
 							objetoActual.put_boolean (True, llave)
@@ -132,12 +203,9 @@ feature {NONE} -- Initialization
 							objetoActual.put_boolean (False, llave)
 						end
 					end
-
-
 				end
 				jsonArray.extend (objetoActual)
 			end
-
 			Result := jsonArray
 		end
 
@@ -145,10 +213,9 @@ feature {NONE} -- Initialization
 	load (fileName: STRING): JSON_ARRAY
 
 		local
+			c: INTEGER
 			line: STRING
 			counter: INTEGER
-
-			c: INTEGER
 			csvCargado: CSV_REP
 			input_file: PLAIN_TEXT_FILE
 			filaActual: LINKED_LIST [STRING]
@@ -182,5 +249,4 @@ feature {NONE} -- Initialization
 			input_file.close
 			Result := csv_to_json (csvCargado)
 		end
-
 end
