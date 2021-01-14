@@ -58,8 +58,6 @@ feature {NONE} -- Initialization
 				across listaAux as column
 				loop
 					if tipos then
-							-- falta agregar tipos
-						print(column.item.split (':').at (2).head(1))
 						lineNombres := column.item.split (':').at (2)
 						if lineNombres.head(1).is_equal ("%"") then
 							lineTipos.append ("X;")
@@ -78,6 +76,8 @@ feature {NONE} -- Initialization
 						line.append ("S" + ";")
 					elseif lineAux2.is_equal ("false") then
 						line.append ("N" + ";")
+					elseif lineAux2.is_equal ("null") then
+						line.append ("" + ";")
 					else
 						line.append (lineAux2 + ";")
 					end
@@ -100,34 +100,72 @@ feature {NONE} -- Initialization
 		end
 
 	selectRows (atributo: STRING valor: STRING JSONArrayAux: JSON_ARRAY): JSON_ARRAY
-
 		local
 			cont:INTEGER
 			newJSON:JSON_ARRAY
+			stringAux:STRING
 			jsonStringAux:JSON_STRING
-			objetoActual: JSON_OBJECT
 		do
 			create newJSON.make_empty
-			create objetoActual.make
 			jsonStringAux:=atributo
-			--JSONArrayAux.array_item (6)
-
+			print(atributo+"%N")
 			from
-				cont:=0
+				cont:=1
 			until
 				cont=JSONArrayAux.count
 			loop
-				--if JSONArrayAux.i_th (i: INTEGER_32).is_object then
-
+				if attached {JSON_OBJECT} JSONArrayAux.i_th (cont) as jax2 then
+			   		if jax2.has_key (jsonStringAux) then
+		   				if attached {JSON_VALUE} jax2.item(jsonStringAux) as m then
+		   					stringAux:=m.representation
+		   					stringAux.replace_substring_all ("%"", "")
+		   					if stringAux.is_equal (valor) then
+		   						newJSON.extend (jax2)
+		   						print(stringAux+"----"+valor+"%N")
+		   					end
+		   				end
+			   		end
+				end
 				cont:=cont+1
 			end
 			Result:=newJSON
 		end
 
+	project(JSONArrayAux:JSON_ARRAY listaAtributos:LINKED_LIST[STRING]):JSON_ARRAY
+	local
+		cont:INTEGER
+		newJSON:JSON_ARRAY
+		objActual:JSON_OBJECT
+		jsonStringAux:JSON_STRING
+	do
+
+		create newJSON.make_empty
+		from
+			cont:=1
+		until
+			cont=JSONArrayAux.count
+		loop
+			if attached {JSON_OBJECT} JSONArrayAux.i_th(cont) as jax then
+				create objActual.make
+				across listaAtributos as lisAux
+				loop
+					jsonStringAux:=lisAux.item.out
+					if jax.has_key (jsonStringAux) then
+						print(jax.representation)
+						objActual.put (jax.item (jsonStringAux),jsonStringAux)
+					end
+				end
+				newJSON.extend(objActual)
+			end
+			cont:=cont+1
+		end
+		Result:= newJSON
+	end
 	main_option_menu
 
 		local
 			in: INTEGER
+			cont:INTEGER
 			line: STRING
 			valor: STRING
 			lineAux: STRING
@@ -136,6 +174,7 @@ feature {NONE} -- Initialization
 			atributo: STRING
 			loadedFileName: STRING
 			JSONArrayAux: JSON_ARRAY
+			listaAux: LINKED_LIST[STRING]
 			output_file: PLAIN_TEXT_FILE
 
 		do
@@ -150,8 +189,12 @@ feature {NONE} -- Initialization
 				line := io.last_string
 				lineAux := line.split (' ').at(1)
 				if lineAux.is_equal ("load") then
+					if not objetosJSON.has_key (line.split (' ').at (2)) then
 					loadedFileName := line.split (' ').at (3)
 					objetosJSON.extend (load (loadedFileName), line.split (' ').at (2))
+					else
+						print ("Ya existe el JSON especificado" + "%N")
+					end
 				elseif lineAux.is_equal ("save") then
 
 					if objetosJSON.has_key (line.split (' ').at (2)) then
@@ -166,6 +209,7 @@ feature {NONE} -- Initialization
 						line.replace_substring_all ("]", "%N" + "]")
 						output_file.put_string (line)
 						output_file.close
+						print ("Se ha guardado con éxito el archivo " + "%N")
 					else
 						print ("No existe el archivo especificado" + "%N")
 					end
@@ -179,39 +223,72 @@ feature {NONE} -- Initialization
 						if JSONArrayAux /= void then
 							line := JSONToCSV (JSONArrayAux)
 						end
-
 						output_file.put_string (line)
 						output_file.close
+						print ("Se ha guardado con éxito el archivo " + "%N")
 					else
 						print ("No existe el archivo especificado" + "%N")
 					end
+
 				elseif lineAux.is_equal ("select") then
 					JSONAux1 := line.split (' ').at (2)
-
 					if objetosJSON.has_key (JSONAux1) then
 						create JSONArrayAux.make_empty
-						valor := line.split (' ').at (6)
-						atributo := line.split (' ').at (4)
-						JSONAux2 := line.split (' ').at (3)
-						JSONArrayAux := objetosJSON.at (JSONAux1)
+						atributo := line.split (' ').at(4)
+						JSONAux2 := line.split (' ').at(3)
+						JSONArrayAux := objetosJSON.at(JSONAux1)
+						valor:=""
+
+						from
+							cont:=6
+						until
+							cont= line.split (' ').count+1
+						loop
+							valor.append (line.split (' ').at (cont)+" ")
+							cont:=cont+1
+						end
+						valor.replace_substring_all ("%"", "")
+						valor.remove_tail (1)
+						print(valor)
 						if JSONArrayAux /= Void then
-							JSONArrayAux := selectRows (Atributo, Valor, JSONArrayAux)
+							JSONArrayAux := selectRows (atributo, valor, JSONArrayAux)
 							objetosJSON.extend (JSONArrayAux, JSONAux2)
 						end
+						print ("Se ha creado la estructura con exito "+ "%N")
 					else
 						print ("La estructura no existe intentelo de nuevo")
 					end
 
 				elseif lineAux.is_equal ("project") then
+					JSONAux1:=line.split (' ').at (2)
+					JSONAux2:=line.split (' ').at (3)
+					if objetosJSON.has_key (JSONAux2) then
+						print("Ya existe la estructura JSON indicada %N")
+					else
+						create listaAux.make_from_iterable (line.split (' '))
+						listaAux.remove_i_th (1)
+						listaAux.remove_i_th (1)
+						listaAux.remove_i_th (1)
+						if listaAux.count < 1 then
+							print("No se adjuntaron Atributos %N")
+						else
+							JSONArrayAux := objetosJSON.at (JSONAux1)
+							if JSONArrayAux /= Void then
+								JSONArrayAux := project(JSONArrayAux, listaAux)
+								objetosJSON.extend (JSONArrayAux, JSONAux2)
+							end
+						end
+					end
 
 				elseif lineAux.is_equal ("exit") then
-					print ("Proyecto 3 se estÃ¡ cerrando..." + "%N")
 					in := 1
+					print ("Proyecto 3 se está cerrando..." + "%N")
 				else
 					print ("Introdujo un comando erroneo" + "%N" + "%N")
 				end
 			end
 		end
+
 
 	csv_to_json (csvActual: CSV_REP): JSON_ARRAY
 
@@ -231,7 +308,7 @@ feature {NONE} -- Initialization
 			loop
 				create objetoActual.make
 				across fila.item
- as column
+ 					as column
 				loop
 					index := column.cursor_index
 					create llave.make_from_string (csvActual.nombrescolumnas.at (index))
@@ -239,8 +316,9 @@ feature {NONE} -- Initialization
 					if tipo.is_equal ("X") then
 						if column.item.out.is_equal ("") then
 							objetoActual.put (jsonNull, llave)
-						end
+						else
 						objetoActual.put_string (column.item.out, llave)
+						end
 					elseif tipo.is_equal ("N") or tipo.is_equal ("9") then
 						objetoActual.put_real (column.item.out.to_real, llave)
 					elseif tipo.is_equal ("B") then
@@ -295,5 +373,4 @@ feature {NONE} -- Initialization
 			input_file.close
 			Result := csv_to_json (csvCargado)
 		end
-
 end
